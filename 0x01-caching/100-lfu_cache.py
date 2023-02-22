@@ -1,74 +1,120 @@
 #!/usr/bin/env python3
-"""Least Frequently Used caching module.
 """
-from collections import OrderedDict
-
-from base_caching import BaseCaching
+Caching class that inherits from the base class, BaseCashing
+Has limited cashing capabilities
+Implements the LFU caching algorithim, if more than one is
+found, the LRU algorithim will be used.
+"""
+import sys
+BaseCaching = __import__('base_caching').BaseCaching
 
 
 class LFUCache(BaseCaching):
-    """Represents an object that allows storing and
-    retrieving items from a dictionary with a LFU
-    removal mechanism when the limit is reached.
     """
-    def __init__(self):
-        """Initializes the cache.
+    Caching class that inherits from the base class, BaseCashing
+    Has limited cashing capabilities (limited space)
+    Implements the LFU caching algorithim, if more than one is
+    found, the LRU algorithim will be used.
+    """
+    def __init__(self) -> None:
+        """
+        Creates the dictionary and list object
         """
         super().__init__()
-        self.cache_data = OrderedDict()
-        self.keys_freq = []
-
-    def __reorder_items(self, mru_key):
-        """Reorders the items in this cache based on the most
-        recently used item.
-        """
-        max_positions = []
-        mru_freq = 0
-        mru_pos = 0
-        ins_pos = 0
-        for i, key_freq in enumerate(self.keys_freq):
-            if key_freq[0] == mru_key:
-                mru_freq = key_freq[1] + 1
-                mru_pos = i
-                break
-            elif len(max_positions) == 0:
-                max_positions.append(i)
-            elif key_freq[1] < self.keys_freq[max_positions[-1]][1]:
-                max_positions.append(i)
-        max_positions.reverse()
-        for pos in max_positions:
-            if self.keys_freq[pos][1] > mru_freq:
-                break
-            ins_pos = pos
-        self.keys_freq.pop(mru_pos)
-        self.keys_freq.insert(ins_pos, [mru_key, mru_freq])
+        self.access_dict = {}
+        self.age_dict = {}
+        self.counter = 0
 
     def put(self, key, item):
-        """Adds an item in the cache.
+        """
+        Method that populates the cache given a key and item
+        The LFU caching algorithim is used to populate the
+        cache, if more than one is found, the LRU algorithim
+        will be used.
         """
         if key is None or item is None:
             return
-        if key not in self.cache_data:
-            if len(self.cache_data) + 1 > BaseCaching.MAX_ITEMS:
-                lfu_key, _ = self.keys_freq[-1]
-                self.cache_data.pop(lfu_key)
-                self.keys_freq.pop()
-                print("DISCARD:", lfu_key)
+        # Checking if the key exists in the
+        # dictionary, and performing an insert
+        # into the actual dictionary and age
+        # tracking dictionary
+        if key in self.cache_data.keys():
             self.cache_data[key] = item
-            ins_index = len(self.keys_freq)
-            for i, key_freq in enumerate(self.keys_freq):
-                if key_freq[1] == 0:
-                    ins_index = i
-                    break
-            self.keys_freq.insert(ins_index, [key, 0])
+            self.age_dict[key] = self.counter
+            self.counter += 1
+            # For LFU algorithim
+            self.access_dict[key] += 1
         else:
+            # Checking if the cache limit has reached
+            if (len(self.cache_data) == BaseCaching.MAX_ITEMS):
+                self.remove_key()
+            # Inserting the new key and item, while also
+            # assigning it an age
             self.cache_data[key] = item
-            self.__reorder_items(key)
+            # Handling LRU caching
+            self.age_dict[key] = self.counter
+            self.counter += 1
+            # Handling LFU caching
+            self.access_dict[key] = 1
 
     def get(self, key):
-        """Retrieves an item by key.
         """
-        if key is not None and key in self.cache_data:
-            self.__reorder_items(key)
-        return self.cache_data.get(key, None)
+        Method that retrieves the data from the cache given
+        the key
+        """
+        value = self.cache_data.get(key, None)
 
+        # Handling LRU
+        if value is not None:
+            # Updating the age of the key
+            self.age_dict[key] = self.counter
+            self.counter += 1
+
+            # Handling LFU
+            self.access_dict[key] += 1
+        return value
+
+    def remove_key(self):
+        """
+        Removes a key, using the LFU algorithim, if keys
+        with the same frequency are encountred, the LRU
+        algorithim will be used
+        """
+        # For LFU algorithim
+        min_freq_value = sys.maxsize
+        min_freq_key = None
+        for k, freq in self.access_dict.items():
+            if freq < min_freq_value:
+                min_freq_value = freq
+                min_freq_key = k
+
+        if ([self.access_dict.values()].count(min_freq_value) == 1):
+            self.cache_data.pop(min_freq_key)
+            print("DISCARD: {}".format(min_freq_key))
+            self.access_dict.pop(min_freq_key)
+            self.age_dict.pop(min_freq_key)
+        else:
+            subset_age_dict = {}
+            # Find all keys that have similar frequencies
+            # and populating subset of the age dict specifically
+            # for those keys
+            for ke, val in self.access_dict.items():
+                if val == min_freq_value:
+                    subset_age_dict[ke] = self.age_dict[ke]
+
+            # Get the key (k) with the smallest age
+            # from the subset_age_dict
+            min_age_value = sys.maxsize
+            min_age_key = None
+            for k, age in subset_age_dict.items():
+                if age < min_age_value:
+                    min_age_value = age
+                    min_age_key = k
+
+            # Remove the key with minimum age from the
+            # actual dictionary and age_dictinary
+            self.cache_data.pop(min_age_key)
+            print("DISCARD: {}".format(min_age_key))
+            self.age_dict.pop(min_age_key)
+            self.access_dict.pop(min_freq_key)
+            return min_age_key
